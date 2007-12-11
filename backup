@@ -94,6 +94,8 @@ if __name__ == '__main__':
                 backup_lv (job['name'], job['what'])
             elif job['type'] == 'dir':
                 backup_dir (job['name'], job['what'])
+            else:
+                raise Exception ('Unknown job type "%s"' % (job['type']))
         except Exception, e:
             errors += 1
             sys.excepthook (*sys.exc_info ())
