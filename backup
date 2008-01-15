@@ -45,7 +45,7 @@ def backup_dir (name, dir):
         f.quit ()
     
     call ('duplicity',
-        '--%s' % (fi),
+        fi,
         '--volsize=%i' % (10),
         '--exclude-other-filesystems',
         dir,
