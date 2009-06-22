@@ -50,6 +50,22 @@ class mount (object):
 
         return False
 
+class snapshot (object):
+    def __init__ (self, lv):
+        self.lv = lv
+        self.lv_snap = '%s_backup' % (lv)
+        self.device = os.path.join ('/dev', self.lv_snap)
+
+    def __enter__ (self):
+        call ('lvcreate', '--quiet', '--size=1G', '--snapshot', '--name=%s' % (self.lv_snap), self.lv)
+
+        return self
+
+    def __exit__ (self, exc_type, exc_val, exc_tv):
+        call ('lvremove', '--quiet', '--force', self.lv_snap)
+
+        return False
+
 def backup_dir (name, dir):
     if not os.path.ismount (config.target_root):
         raise Exception ('%s not mounted' % (config.target_root))
