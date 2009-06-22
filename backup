@@ -23,6 +23,31 @@ def call (*args, **kwargs):
     if p.returncode != 0:
         raise Exception ('%s failed (status %i)' % (args[0], p.returncode))
 
+class mount (object):
+    def __init__ (self, device, target, ro = True):
+        self.device = device
+        self.target = target
+        self.ro = ro
+
+        if os.path.ismount (target):
+            raise Exception ('"%s" already mounted' % (target))
+
+    def __enter__ (self):
+        call ('mount',
+            '-o',
+            'ro' if self.ro else 'rw',
+            self.device,
+            self.target)
+
+        return self
+
+    def __exit__ (self, exc_type, exc_val, exc_tb):
+        if not os.path.ismount (self.target):
+            raise Exception ('"%s" no longer mounted' % (self.target))
+        call ('umount', self.target)
+
+        return False
+
 def backup_dir (name, dir):
     if not os.path.ismount (config.target_root):
         raise Exception ('%s not mounted' % (config.target_root))
