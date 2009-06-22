@@ -12,6 +12,8 @@ import urlparse
 config = imp.load_source ('config', '/etc/backup.conf')
 
 def call (*args, **kwargs):
+    print '>', ' '.join (args)
+
     kwargs['stdout'] = subprocess.PIPE
     kwargs['stderr'] = subprocess.STDOUT
     kwargs['close_fds'] = True
@@ -19,7 +21,7 @@ def call (*args, **kwargs):
 
     so, se = p.communicate ()
     for line in so.split ('\n'):
-        if line!='': print '>', line
+        if line!='': print '|', line
     if p.returncode != 0:
         raise Exception ('%s failed (status %i)' % (args[0], p.returncode))
 
