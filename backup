@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from __future__ import division
+from __future__ import with_statement
 
 import imp
 import os
@@ -67,12 +68,10 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    if not os.path.ismount (config.target_root):
-        raise Exception ('%s not mounted' % (config.target_root))
-    target_dir = os.path.join (config.target_root, date, name)
+    target_dir = os.path.join (config.target_mnt, date, name)
 
     if fi == 'full':
-        os.mkdirs (target_dir)
+        os.makedirs (target_dir)
     
     call ('duplicity',
         fi,
@@ -81,18 +80,9 @@ def backup_dir (name, dir):
         urlparse.urljoin ('file:', target_dir))
 
 def backup_lv (name, lv):
-    lv_snap = '%sbackup' % (lv)
-
-    if os.path.ismount (config.snapshot_mnt):
-        raise Exception ('Mount point "%s" in use' % (config.snapshot_mnt))
-
-    call ('lvcreate', '--quiet', '--size=1024M', '--snapshot', '--name=%s' % (lv_snap), lv)
-    call ('mount', '-o', 'ro', '/dev/%s' % (lv_snap), config.snapshot_mnt)
-    try:
-        backup_dir (name, config.snapshot_mnt)
-    finally:
-        call ('umount', config.snapshot_mnt)
-        call ('lvremove', '--quiet', '--force', lv_snap)
+    with snapshot (lv) as s:
+        with mount (s.device, config.snapshot_mnt, ro = True):
+            backup_dir (name, config.snapshot_mnt)
 
 if __name__ == '__main__':
     # duplicity reads this from the environment
@@ -112,35 +102,38 @@ if __name__ == '__main__':
         sys.exit (1)
 
     # run jobs
-    for job in config.jobs:
-        print '-' * 72
-        print 'Backing up "%s"...' % (job['name'])
+    with mount (config.target_device, config.target_mnt, ro = False):
+        for job in config.jobs:
+            print
+            print '_' * 72
+            print 'Backing up "%s"...' % (job['name'])
 
-        try:
-            if job['type'] == 'lv':
-                backup_lv (job['name'], job['what'])
-            elif job['type'] == 'dir':
-                backup_dir (job['name'], job['what'])
-            else:
-                raise Exception ('Unknown job type "%s"' % (job['type']))
-        except Exception, e:
-            errors += 1
-            sys.excepthook (*sys.exc_info ())
-
-        print '\n',
+            try:
+                if job['type'] == 'lv':
+                    backup_lv (job['name'], job['what'])
+                elif job['type'] == 'dir':
+                    backup_dir (job['name'], job['what'])
+                else:
+                    raise Exception ('Unknown job type "%s"' % (job['type']))
+            except Exception, e:
+                errors += 1
+                sys.excepthook (*sys.exc_info ())
 
     # report
-    print '-' * 72
+    print
+    print '_' * 72
     print 'Process complete.'
 
     if errors > 0:
         print '%i job%s failed.' % (errors, errors != 1 and 's' or '')
 
-    # remaining space
-    if os.ismount (config.target_root):
-        s = os.statvfs (config.target_root)
-        size = s.f_frsize * s.f_blocks
-        used = size - s.f_frsize * s.f_bfree
-        print 'Used %i of %i MiB (%i%%).' % (used , size, '%d%%' % (used/size * 100))
+    with mount (config.target_device, config.target_mnt, ro = True) as m:
+        # remaining space
+        if os.path.ismount (m.target):
+            s = os.statvfs (m.target)
+            size = s.f_frsize * s.f_blocks
+            used = size - s.f_frsize * s.f_bfree
+            frac = used/size * 100
+            print 'Used %g of %g bytes (%.0f%%).' % (used, size, frac)
 
     sys.exit (0 if errors == 0 else 1)
