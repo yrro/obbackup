@@ -105,8 +105,8 @@ if __name__ == '__main__':
     # run jobs
     with mount (config.target_device, config.target_mnt, ro = False):
         for job in config.jobs:
-            print
             print '_' * 72
+            print
             print 'Backing up "%s"...' % (job['name'])
 
             try:
@@ -121,8 +121,8 @@ if __name__ == '__main__':
                 traceback.print_exc ()
 
     # report
-    print
     print '_' * 72
+    print
     print 'Process complete.'
 
     if errors > 0:
