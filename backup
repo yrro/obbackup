@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 import traceback
-import time
 import urlparse
 
 config = imp.load_source ('config', '/etc/backup.conf')
@@ -69,16 +68,19 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    target_dir = os.path.join (config.target_mnt, date, name)
+    target_dir = os.path.join (config.target_mnt, config.target_subdir, name)
 
-    if fi == 'full':
+    if not os.path.exists (target_dir):
         os.makedirs (target_dir)
     
-    call ('duplicity',
-        fi,
+    args = ['duplicity',
         '--exclude-other-filesystems',
+        '--full-if-older-than', '1W',
         dir,
-        urlparse.urljoin ('file:', target_dir))
+        urlparse.urljoin ('file:', target_dir)]
+    if backup_type != 'auto':
+        args.insert (1, backup_type)
+    call (*args)
 
 def backup_lv (name, lv):
     with snapshot (lv) as s:
@@ -89,16 +91,14 @@ if __name__ == '__main__':
     # duplicity reads this from the environment
     os.environ['PASSPHRASE'] = config.passphrase
 
-    date = time.strftime ('%G-%V')
-
     errors = 0
 
     # full or incremental?
     if len (sys.argv) != 2:
         print 'Backup type not specified; aborting.'
         sys.exit (1)
-    fi = sys.argv[1]
-    if sys.argv[1] not in ('full', 'incremental'):
+    backup_type = sys.argv[1]
+    if sys.argv[1] not in ('auto', 'full', 'incremental'):
         print 'Invalid backup type "%s"; aborting.' % (sys.argv[1])
         sys.exit (1)
 
