@@ -3,14 +3,14 @@
 from __future__ import division
 from __future__ import with_statement
 
-import imp
+import ConfigParser
 import os
+import re
+import socket
 import subprocess
 import sys
 import traceback
 import urlparse
-
-config = imp.load_source ('config', '/etc/backup.conf')
 
 def call (*args, **kwargs):
     print '>', ' '.join (args)
@@ -27,10 +27,12 @@ def call (*args, **kwargs):
         raise Exception ('%s failed (status %i)' % (args[0], p.returncode))
 
 class mount (object):
-    def __init__ (self, device, target, ro = True):
+    def __init__ (self, device, target, ro, options = None):
         self.device = device
         self.target = target
-        self.ro = ro
+        self.options = 'ro' if ro else 'rw'
+        if not options is None:
+            self.options += ',' + options
 
         if os.path.ismount (target):
             raise Exception ('"%s" already mounted' % (target))
@@ -38,7 +40,7 @@ class mount (object):
     def __enter__ (self):
         call ('mount',
             '-o',
-            'ro' if self.ro else 'rw',
+            self.options,
             self.device,
             self.target)
 
@@ -68,67 +70,84 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    target_dir = os.path.join (config.target_mnt, config.target_subdir, name)
+    target_dir = os.path.join (config.get ('target', 'dir'), config.get ('target', 'subdir'), name)
 
     if not os.path.exists (target_dir):
         os.makedirs (target_dir)
+
+    if backup_type == 'dummy':
+        return
     
     args = ['duplicity',
-        '--exclude-other-filesystems',
-        '--full-if-older-than', '1W',
-        dir,
-        urlparse.urljoin ('file:', target_dir)]
-    if backup_type != 'auto':
-        args.insert (1, backup_type)
+        '--exclude-other-filesystems']
+
+    if backup_type == 'auto':
+        args.extend (['--full-if-older-than', '1W'])
+    else:
+        args.append (backup_type)
+
+    args.extend ([dir, urlparse.urljoin ('file:', target_dir)])
     call (*args)
 
-def backup_lv (name, lv):
-    with snapshot (lv) as s:
-        with mount (s.device, config.snapshot_mnt, ro = True):
-            backup_dir (name, config.snapshot_mnt)
+def backup_lv (name, section):
+    with snapshot (config.get (section, 'what')) as s:
+        with mount (s.device, config.get ('lvm', 'snapshot_mnt'), ro = True):
+            backup_dir (name, config.get ('lvm', 'snapshot_mnt'))
+
+def print_line (msg):
+    print '_____ %s %s' % (msg, '_' * (67 - len (msg) - 1))
 
 if __name__ == '__main__':
+    backup_types = ['auto', 'full', 'incremental', 'dummy']
+    if (len (sys.argv) != 3):
+        print >> sys.stderr, "Usage: %s CONFIGFILE %s" % (sys.argv[0], '|'.join (backup_types))
+        sys.exit (1)
+
+    config = ConfigParser.SafeConfigParser ({'hostname': socket.gethostname ()})
+    config.read (sys.argv[1])
+
     # duplicity reads this from the environment
-    os.environ['PASSPHRASE'] = config.passphrase
+    os.environ['PASSPHRASE'] = config.get ('security', 'passphrase')
 
     errors = 0
 
     # full or incremental?
-    if len (sys.argv) != 2:
-        print 'Backup type not specified; aborting.'
-        sys.exit (1)
-    backup_type = sys.argv[1]
-    if sys.argv[1] not in ('auto', 'full', 'incremental'):
-        print 'Invalid backup type "%s"; aborting.' % (sys.argv[1])
+    backup_type = sys.argv[2]
+    if sys.argv[2] not in backup_types:
+        print 'Invalid backup type "%s"; aborting.' % (sys.argv[2])
         sys.exit (1)
 
     # run jobs
-    with mount (config.target_device, config.target_mnt, ro = False):
-        for job in config.jobs:
-            print '_' * 72
-            print
-            print 'Backing up "%s"...' % (job['name'])
+    with mount (config.get ('target', 'device'), config.get ('target', 'dir'), ro = False, options = config.get ('target', 'options') if config.has_option ('target', 'options') else None):
+        job_re = re.compile ('^job:(?P<name>\w+)$')
+        for section in config.sections ():
+            m = job_re.match (section)
+            if m is None: continue
+
+            name = m.group ('name')
+            print; print_line ("%s start" % (name))
 
             try:
-                if job['type'] == 'lv':
-                    backup_lv (job['name'], job['what'])
-                elif job['type'] == 'dir':
-                    backup_dir (job['name'], job['what'])
+                type = config.get (section, 'type')
+                if type == 'lv':
+                    backup_lv (name, section)
+                elif type == 'dir':
+                    backup_dir (name, config.get (section, 'what'))
                 else:
-                    raise Exception ('Unknown job type "%s"' % (job['type']))
+                    raise Exception ('Unknown job type "%s"' % (type))
             except Exception, e:
                 errors += 1
                 traceback.print_exc ()
+            print_line ("%s end" % (name))
 
     # report
-    print '_' * 72
     print
     print 'Process complete.'
 
     if errors > 0:
         print '%i job%s failed.' % (errors, errors != 1 and 's' or '')
 
-    with mount (config.target_device, config.target_mnt, ro = True) as m:
+    with mount (config.get ('target', 'device'), config.get ('target', 'dir'), ro = True) as m:
         # remaining space
         if os.path.ismount (m.target):
             s = os.statvfs (m.target)
