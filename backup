@@ -9,6 +9,7 @@ import re
 import socket
 import subprocess
 import sys
+import time
 import traceback
 import urlparse
 
@@ -93,6 +94,7 @@ class snapshot (object):
         self.device = os.path.join ('/dev', self.lv_snap)
 
     def __enter__ (self):
+        time.sleep (1) # might eliminate weird warnings from lvcreate about devices not existing?
         call ('lvcreate', '--quiet', '--size=1G', '--snapshot', '--name=%s' % (self.lv_snap), self.lv)
 
         return self
