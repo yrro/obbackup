@@ -109,13 +109,13 @@ if __name__ == '__main__':
     # duplicity reads this from the environment
     os.environ['PASSPHRASE'] = config.get ('security', 'passphrase')
 
-    errors = 0
-
     # full or incremental?
     backup_type = sys.argv[2]
     if sys.argv[2] not in backup_types:
         print 'Invalid backup type "%s"; aborting.' % (sys.argv[2])
         sys.exit (1)
+
+    errors = 0
 
     # run jobs
     with mount (config.get ('target', 'device'), config.get ('target', 'dir'), ro = False, options = config.get ('target', 'options') if config.has_option ('target', 'options') else None):
