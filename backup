@@ -106,8 +106,7 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    args = ['duplicity',
-        '--exclude-other-filesystems']
+    args = ['duplicity']
 
     if backup_type == 'auto':
         args.extend (['--full-if-older-than', '1W'])
@@ -115,6 +114,8 @@ def backup_dir (name, dir):
         args.append (backup_type)
     elif backup_type == 'dummy':
         args.insert (0, 'true')
+
+    args.append ('--exclude-other-filesystems')
 
     uri = config.get ('target', 'uri')
     if uri[-1] != '/': uri += '/'
