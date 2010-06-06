@@ -29,31 +29,62 @@ def call (*args, **kwargs):
     return so
 
 class mount (object):
-    def __init__ (self, device, target, ro, options = None):
-        self.device = device
-        self.target = target
-        self.options = 'ro' if ro else 'rw'
-        if not options is None:
-            self.options += ',' + options
+    mount_output = re.compile ('(\S+) on (\S+) type (\S+) (\S+)')
 
-        if os.path.ismount (target):
-            raise Exception ('"%s" already mounted' % (target))
+    def __init__ (self, device, target = None, options = {}):
+        self.device = device
+        self.options = options
+        self.target = target
+
+    def check_mounted (self, desired):
+        if os.path.ismount (self.target) != desired:
+            raise Exception ('"%s" %s mounted, but it %s be' % (self.target, 'is not' if desired else 'is', 'should' if desired else 'should not'))
 
     def __enter__ (self):
-        call ('mount',
-            '-o',
-            self.options,
-            self.device,
-            self.target)
+        if self.target:
+            self.check_mounted (False)
 
+        args = ['mount']
+        if not self.target:
+            args.append ('-v')
+        if len (self.options) > 0:
+            args.append ('-o')
+            args.append (','.join ([k + ('=' + v if v else '') for k, v in self.options.items()]))
+        args.append (self.device)
+        if self.target:
+            args.append (self.target)
+
+        output = call (*args)
+        if not self.target:
+            m = self.mount_output.match (output)
+            if not m: raise Exception ('Could not parse mount output')
+            self.target = m.group (2)
+
+        self.check_mounted (True)
         return self
 
-    def __exit__ (self, exc_type, exc_val, exc_tb):
-        if not os.path.ismount (self.target):
-            raise Exception ('"%s" no longer mounted' % (self.target))
-        call ('umount', self.target)
+    def df (self):
+        self.check_mounted (True)
 
+        s = os.statvfs (self.target)
+        size = s.f_frsize * s.f_blocks
+        used = size - s.f_frsize * s.f_bfree
+        frac = used/size * 100
+        return used, size, frac
+
+    def __exit__ (self, exc_type, exc_val, exc_tb):
+        self.check_mounted (True)
+        call ('umount', self.target)
+        self.check_mounted (False)
         return False
+
+class ftp_mount (object):
+    def __enter__ (self):
+        return self
+    def __exit__ (self, exc_type, exc_val, exc_tb):
+        return False
+    def df (self):
+        return 0, 0, 0
 
 class snapshot (object):
     def __init__ (self, lv):
@@ -72,28 +103,24 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    target_dir = os.path.join (config.get ('target', 'dir'), config.get ('target', 'subdir'), name)
-
-    if not os.path.exists (target_dir):
-        os.makedirs (target_dir)
-
-    if backup_type == 'dummy':
-        return
-    
     args = ['duplicity',
         '--exclude-other-filesystems']
 
     if backup_type == 'auto':
         args.extend (['--full-if-older-than', '1W'])
-    else:
+    elif backup_type in ['full', 'incremental']:
         args.append (backup_type)
+    elif backup_type == 'dummy':
+        args.insert (0, 'true')
 
-    args.extend ([dir, urlparse.urljoin ('file:', target_dir)])
+    uri = config.get ('target', 'uri')
+    if uri[-1] != '/': uri += '/'
+    args.extend ([dir, urlparse.urljoin (uri, name)])
     call (*args)
 
-def backup_lv (name, section):
-    with snapshot (config.get (section, 'what')) as s:
-        with mount (s.device, config.get ('lvm', 'snapshot_mnt'), ro = True):
+def backup_lv (name, lv):
+    with snapshot (lv) as s:
+        with mount (s.device, config.get ('lvm', 'snapshot_mnt'), {'ro': None}):
             backup_dir (name, config.get ('lvm', 'snapshot_mnt'))
 
 def print_line (msg):
@@ -118,14 +145,18 @@ if __name__ == '__main__':
         print 'Invalid backup type "%s"; aborting.' % (sys.argv[2])
         sys.exit (1)
 
+    if config.has_option ('target', 'mount'):
+        mounter = mount (config.get ('target', 'mount'))
+    else:
+        mounter = ftp_mount ()
+
     errors = 0
 
-    # run jobs
-    with mount (config.get ('target', 'device'), config.get ('target', 'dir'), ro = False, options = config.get ('target', 'options') if config.has_option ('target', 'options') else None):
+    with mounter:
         job_re = re.compile ('^job:(?P<name>\w+)$')
         for section in config.sections ():
             m = job_re.match (section)
-            if m is None: continue
+            if not m: continue
 
             name = m.group ('name')
             print; print_line ("%s start" % (name))
@@ -133,7 +164,7 @@ if __name__ == '__main__':
             try:
                 type = config.get (section, 'type')
                 if type == 'lv':
-                    backup_lv (name, section)
+                    backup_lv (name, config.get (section, 'what'))
                 elif type == 'dir':
                     backup_dir (name, config.get (section, 'what'))
                 else:
@@ -143,20 +174,15 @@ if __name__ == '__main__':
                 traceback.print_exc ()
             print_line ("%s end" % (name))
 
-    # report
-    print
-    print 'Process complete.'
+        # report
+        print
+        print 'Process complete.'
 
-    if errors > 0:
-        print '%i job%s failed.' % (errors, errors != 1 and 's' or '')
+        if errors > 0:
+            print '%i job%s failed.' % (errors, errors != 1 and 's' or '')
 
-    with mount (config.get ('target', 'device'), config.get ('target', 'dir'), ro = True) as m:
-        # remaining space
-        if os.path.ismount (m.target):
-            s = os.statvfs (m.target)
-            size = s.f_frsize * s.f_blocks
-            used = size - s.f_frsize * s.f_bfree
-            frac = used/size * 100
-            print 'Used %g of %g bytes (%.0f%%).' % (used, size, frac)
+        used, size, frac = mounter.df ()
+        print 'Used %d of %g bytes (%.0f%%).' % (used, size, frac)
+        print
 
     sys.exit (0 if errors == 0 else 1)
