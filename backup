@@ -16,6 +16,7 @@ import urlparse
 def call (*args, **kwargs):
     print '>', ' '.join (args)
 
+    kwargs['stdin'] = open ('/dev/null', 'r')
     kwargs['stdout'] = subprocess.PIPE
     kwargs['stderr'] = subprocess.STDOUT
     kwargs['close_fds'] = True
