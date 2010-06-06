@@ -123,6 +123,11 @@ def backup_lv (name, lv):
         with mount (s.device, config.get ('lvm', 'snapshot_mnt'), {'ro': None}):
             backup_dir (name, config.get ('lvm', 'snapshot_mnt'))
 
+backup_functions = {
+    'lv': backup_lv,
+    'dir': backup_dir
+}
+
 def print_line (msg):
     print '_____ %s %s' % (msg, '_' * (67 - len (msg) - 1))
 
@@ -163,12 +168,10 @@ if __name__ == '__main__':
 
             try:
                 type = config.get (section, 'type')
-                if type == 'lv':
-                    backup_lv (name, config.get (section, 'what'))
-                elif type == 'dir':
-                    backup_dir (name, config.get (section, 'what'))
-                else:
+                what = config.get (section, 'what')
+                if type not in backup_functions:
                     raise Exception ('Unknown job type "%s"' % (type))
+                backup_functions[type] (name, what)
             except Exception, e:
                 errors += 1
                 traceback.print_exc ()
