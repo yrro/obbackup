@@ -119,8 +119,13 @@ def backup_dir (name, dir):
 
     uri = config.get ('target', 'uri')
     if uri[-1] != '/': uri += '/'
-    args.extend ([dir, urlparse.urljoin (uri, name)])
-    call (*args)
+    url = urlparse.urljoin (uri, name)
+    args.append (url)
+    try:
+        call (*args)
+    except:
+        call ('duplicity', 'cleanup', url)
+        raise
 
 def backup_lv (name, lv):
     with snapshot (lv) as s:
