@@ -109,13 +109,15 @@ def backup_dir (name, dir):
     args = ['duplicity']
 
     if backup_type == 'auto':
-        args.extend (['--full-if-older-than', '1W'])
+        args.extend (['--full-if-older-than', '1W', '--exclude-other-filesystems', dir])
     elif backup_type in ['full', 'incremental']:
-        args.append (backup_type)
+        args.extend ([backup_type, '--exclude-other-filesystems', dir])
     elif backup_type == 'dummy':
         args.insert (0, 'true')
-
-    args.append ('--exclude-other-filesystems')
+    elif backup_type == 'cleanup':
+        args.extend (['cleanup', '--force'])
+    elif backup_type == 'expire':
+        args.extend (['remove-all-but-n-full', config.get ('target', 'full_count'), '--force'])
 
     uri = config.get ('target', 'uri')
     if uri[-1] != '/': uri += '/'
@@ -141,7 +143,7 @@ def print_line (msg):
     print '_____ %s %s' % (msg, '_' * (67 - len (msg) - 1))
 
 if __name__ == '__main__':
-    backup_types = ['auto', 'full', 'incremental', 'dummy']
+    backup_types = ['auto', 'full', 'incremental', 'dummy', 'cleanup', 'expire']
     if (len (sys.argv) != 3):
         print >> sys.stderr, "Usage: %s CONFIGFILE %s" % (sys.argv[0], '|'.join (backup_types))
         sys.exit (1)
