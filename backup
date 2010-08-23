@@ -71,8 +71,7 @@ class mount (object):
         s = os.statvfs (self.target)
         size = s.f_frsize * s.f_blocks
         used = size - s.f_frsize * s.f_bfree
-        frac = used/size * 100
-        return used, size, frac
+        return used, size
 
     def __exit__ (self, exc_type, exc_val, exc_tb):
         self.check_mounted (True)
@@ -81,12 +80,25 @@ class mount (object):
         return False
 
 class ftp_mount (object):
+    def __init__ (self, uri):
+        self.sr = urlparse.urlsplit (uri)
     def __enter__ (self):
         return self
     def __exit__ (self, exc_type, exc_val, exc_tb):
         return False
     def df (self):
-        return 0, 0, 0
+        p = subprocess.Popen ('lftp', stdin = subprocess.PIPE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+        so, se = p.communicate (input = 'connect %s; user %s %s; du --bytes --summarize .' % (self.sr.hostname, self.sr.username, os.environ['FTP_PASSWORD']))
+        if p.returncode != 0:
+            print 'Unable to calculate used backup space:'
+        for line in se.split ('\n'):
+            if line != '': print '>', line
+        if p.returncode != 0:
+            raise Exception ('lftp failure')
+
+        size = config.getint ('target', 'quota')
+        used = int (so.split ()[0])
+        return used, size
 
 class snapshot (object):
     def __init__ (self, lv):
@@ -165,7 +177,7 @@ if __name__ == '__main__':
     if config.has_option ('target', 'mount'):
         mounter = mount (config.get ('target', 'mount'))
     else:
-        mounter = ftp_mount ()
+        mounter = ftp_mount (config.get ('target', 'uri'))
 
     errors = 0
 
@@ -196,8 +208,11 @@ if __name__ == '__main__':
         if errors > 0:
             print '%i job%s failed.' % (errors, errors != 1 and 's' or '')
 
-        used, size, frac = mounter.df ()
-        print 'Used %d of %g bytes (%.0f%%).' % (used, size, frac)
-        print
+        try:
+            used, size = mounter.df ()
+            print 'Used %d of %g bytes (%.0f%%).' % (used, size, used/size*100)
+        except (Exception, e):
+            print 'Unable to calculate used/remaining space (%s)', e
+            print
 
     sys.exit (0 if errors == 0 else 1)
