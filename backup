@@ -58,9 +58,13 @@ class mount (object):
 
         output = call (*args)
         if not self.target:
-            m = self.mount_output.match (output)
-            if not m: raise Exception ('Could not parse mount output')
-            self.target = m.group (2)
+            for line in output.split ('\n'):
+                m = self.mount_output.match (line)
+                if m:
+                    self.target = m.group (2)
+                    break
+            else:
+                raise Exception ('Could not parse mount output')
 
         self.check_mounted (True)
         return self
