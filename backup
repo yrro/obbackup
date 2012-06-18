@@ -169,8 +169,9 @@ if __name__ == '__main__':
     config.read (sys.argv[1])
 
     # duplicity reads this from the environment
-    for name, value in config.items ('environment'):
-        os.environ[name] = value
+    if config.has_section ('environment'):
+        for name, value in config.items ('environment'):
+            os.environ[name] = value
 
     # full or incremental?
     backup_type = sys.argv[2]
