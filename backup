@@ -201,7 +201,7 @@ if __name__ == '__main__':
                 if type not in backup_functions:
                     raise Exception ('Unknown job type "%s"' % (type))
                 backup_functions[type] (name, what)
-            except Exception, e:
+            except:
                 errors += 1
                 traceback.print_exc ()
             print_line ("%s end" % (name))
@@ -216,8 +216,9 @@ if __name__ == '__main__':
         try:
             used, size = mounter.df ()
             print 'Used %d of %g bytes (%.0f%%).' % (used, size, used/size*100)
-        except (Exception, e):
-            print 'Unable to calculate used/remaining space (%s)', e
+        except:
+            print 'Unable to calculate used/remaining space:'
+            traceback.print_exc ()
             print
 
     sys.exit (0 if errors == 0 else 1)
