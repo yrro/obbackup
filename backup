@@ -26,6 +26,7 @@ def call (*args, **kwargs):
     for line in so.split ('\n'):
         if line!='': print '|', line
     if p.returncode != 0:
+        sys.stdout.flush ()
         raise Exception ('%s failed (status %i)' % (args[0], p.returncode))
 
     return so
@@ -203,7 +204,7 @@ if __name__ == '__main__':
                 backup_functions[type] (name, what)
             except:
                 errors += 1
-                traceback.print_exc ()
+                print traceback.format_exc ()
             print_line ("%s end" % (name))
 
         # report
@@ -218,7 +219,7 @@ if __name__ == '__main__':
             print 'Used %d of %g bytes (%.0f%%).' % (used, size, used/size*100)
         except:
             print 'Unable to calculate used/remaining space:'
-            traceback.print_exc ()
+            print traceback.format_exc ()
             print
 
     sys.exit (0 if errors == 0 else 1)
