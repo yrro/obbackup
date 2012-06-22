@@ -69,6 +69,19 @@ class mount (object):
         self.check_mounted (False)
         return False
 
+class dummy_mount (object):
+    def __init__ (self, directory):
+        self.directory = directory
+    def __enter__ (self):
+        return self
+    def __exit__ (self, exc_type, exc_val, exc_tb):
+        return False
+    def df (self):
+        s = os.statvfs (self.directory)
+        size = s.f_frsize * s.f_blocks
+        used = size - s.f_frsize * s.f_bfree
+        return used, size
+
 class ftp_mount (object):
     def __init__ (self, uri):
         self.sr = urlparse.urlsplit (uri)
@@ -100,28 +113,55 @@ class snapshot (object):
         return False
 
 def backup_dir (name, dir):
-    args = ['duplicity']
+    if backup_type.startswith ('obnam_'):
+        args = ['obnam']
 
-    if backup_type == 'auto':
-        args.extend (['--full-if-older-than', '1W', '--exclude-other-filesystems', dir])
-    elif backup_type in ['full', 'incremental']:
-        args.extend ([backup_type, '--exclude-other-filesystems', dir])
-    elif backup_type == 'dummy':
-        args.insert (0, 'true')
-    elif backup_type == 'cleanup':
-        args.extend (['cleanup', '--force', '--extra-clean'])
-    elif backup_type == 'expire':
-        args.extend (['remove-all-but-n-full', config.get ('target', 'full_count'), '--force'])
+        repostr = config.get ('target', 'uri')
+        repourl = urlparse.urlsplit (repostr)
+        if repourl.scheme == 'file':
+            repostr = os.path.join (repourl.path, name)
+        else:
+            if repostr.path[-1] != '/': repostr += '/'
+            repostr += name
+        del repourl
+        args.append ('--repository={0}'.format (repostr))
 
-    uri = config.get ('target', 'uri')
-    if uri[-1] != '/': uri += '/'
-    url = urlparse.urljoin (uri, name)
-    args.append (url)
-    try:
+        if config.has_option ('target', 'encrypt_with'):
+            args.append ('--encrypt-with={0}'.format (config.get ('target', 'encrypt_with')))
+
+        args.append ('--one-file-system')
+
+        if backup_type == 'obnam_backup':
+            args.extend (['backup', dir])
+        elif backup_type == 'obnam_expire':
+            args.extend (['forget', '--keep={0}'.format (config.get ('target', 'keep'))])
+        elif backup_type == 'obnam_cleanup':
+            args.extend (['force-lock'])
+
         call (*args)
-    except:
-        call ('duplicity', 'cleanup', url)
-        raise
+    else:
+        args = ['duplicity']
+
+        if backup_type == 'auto':
+            args.extend (['--full-if-older-than', '1W', '--exclude-other-filesystems', dir])
+        elif backup_type in ['full', 'incremental']:
+            args.extend ([backup_type, '--exclude-other-filesystems', dir])
+        elif backup_type == 'dummy':
+            args.insert (0, 'true')
+        elif backup_type == 'cleanup':
+            args.extend (['cleanup', '--force', '--extra-clean'])
+        elif backup_type == 'expire':
+            args.extend (['remove-all-but-n-full', config.get ('target', 'full_count'), '--force'])
+
+        uri = config.get ('target', 'uri')
+        if uri[-1] != '/': uri += '/'
+        url = urlparse.urljoin (uri, name)
+        args.append (url)
+        try:
+            call (*args)
+        except:
+            call ('duplicity', 'cleanup', url)
+            raise
 
 def backup_lv (name, lv):
     with snapshot (lv) as s:
@@ -137,7 +177,7 @@ def print_line (msg):
     print '_____ %s %s' % (msg, '_' * (67 - len (msg) - 1))
 
 if __name__ == '__main__':
-    backup_types = ['auto', 'full', 'incremental', 'dummy', 'cleanup', 'expire']
+    backup_types = ['auto', 'full', 'incremental', 'dummy', 'cleanup', 'expire', 'obnam_backup', 'obnam_expire', 'obnam_cleanup']
     if (len (sys.argv) != 3):
         print >> sys.stderr, "Usage: %s CONFIGFILE %s" % (sys.argv[0], '|'.join (backup_types))
         sys.exit (1)
@@ -158,9 +198,14 @@ if __name__ == '__main__':
         sys.exit (1)
 
     if config.has_option ('target', 'mount'):
-        mounter = mount (config.get ('target', 'mount'), None)
-    else:
+        mounter = mount (config.get ('target', 'mount'))
+    elif config.has_option ('target', 'dir'):
+        mounter = dummy_mount (config.get ('target', 'dir'))
+    elif config.has_option ('target', 'uri'):
         mounter = ftp_mount (config.get ('target', 'uri'))
+    else:
+        print 'Missing mount/uri/dir in [target] section'
+        sys.exit (1)
 
     errors = 0
 
