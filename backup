@@ -129,16 +129,21 @@ def backup_dir (name, dir):
         if config.has_option ('target', 'encrypt_with'):
             args.append ('--encrypt-with={0}'.format (config.get ('target', 'encrypt_with')))
 
-        args.append ('--one-file-system')
-
         if backup_type == 'obnam_backup':
-            args.extend (['backup', dir])
-        elif backup_type == 'obnam_expire':
-            args.extend (['forget', '--keep={0}'.format (config.get ('target', 'keep'))])
+            backup_args = list (args)
+            backup_args.extend (['backup', '--one-file-system', dir])
+            forget_args = list (args)
+            forget_args.extend (['forget', '--keep={0}'.format (config.get ('target', 'keep'))])
+            try:
+                call (*backup_args)
+            except:
+                raise
+            else:
+                call (*forget_args)
         elif backup_type == 'obnam_cleanup':
             args.extend (['force-lock'])
+            call (*args)
 
-        call (*args)
     else:
         args = ['duplicity']
 
@@ -177,7 +182,7 @@ def print_line (msg):
     print '_____ %s %s' % (msg, '_' * (67 - len (msg) - 1))
 
 if __name__ == '__main__':
-    backup_types = ['auto', 'full', 'incremental', 'dummy', 'cleanup', 'expire', 'obnam_backup', 'obnam_expire', 'obnam_cleanup']
+    backup_types = ['auto', 'full', 'incremental', 'dummy', 'cleanup', 'expire', 'obnam_backup', 'obnam_cleanup']
     if (len (sys.argv) != 3):
         print >> sys.stderr, "Usage: %s CONFIGFILE %s" % (sys.argv[0], '|'.join (backup_types))
         sys.exit (1)
