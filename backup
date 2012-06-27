@@ -93,7 +93,7 @@ class ftp_mount (object):
         return False
     def df (self):
         p = subprocess.Popen ('lftp', stdin = subprocess.PIPE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-        so, se = p.communicate (input = 'connect %s; user %s %s; du --bytes --summarize .' % (self.sr.hostname, self.sr.username, os.environ['FTP_PASSWORD']))
+        so, se = p.communicate (input = 'connect %s && user %s %s && du --bytes --summarize .' % (self.sr.hostname, self.sr.username, os.environ['FTP_PASSWORD']))
         if p.returncode != 0:
             print 'Unable to calculate used backup space:'
         for line in se.split ('\n'):
