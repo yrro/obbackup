@@ -132,7 +132,7 @@ def backup_dir (name, dir):
     elif backup_type == 'dummy':
         args.insert (0, 'true')
     elif backup_type == 'cleanup':
-        args.extend (['cleanup', '--force'])
+        args.extend (['cleanup', '--force', '--extra-clean'])
     elif backup_type == 'expire':
         args.extend (['remove-all-but-n-full', config.get ('target', 'full_count'), '--force'])
 
