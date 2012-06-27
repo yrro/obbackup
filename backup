@@ -15,20 +15,17 @@ import urlparse
 
 def call (*args, **kwargs):
     print '>', ' '.join (args)
+    sys.stdout.flush (); sys.stderr.flush ()
 
-    kwargs['stdin'] = open ('/dev/null', 'r')
-    kwargs['stdout'] = subprocess.PIPE
-    kwargs['stderr'] = subprocess.STDOUT
+    stdin = kwargs.pop ('stdin', None)
+    if stdin is not None:
+        kwargs['stdin'] = subprocess.PIPE
     kwargs['close_fds'] = True
+
     p = subprocess.Popen (args, **kwargs)
-
-    so, se = p.communicate ()
-    for line in so.split ('\n'):
-        if line!='': print '|', line
+    so, se = p.communicate (stdin)
     if p.returncode != 0:
-        sys.stdout.flush ()
         raise Exception ('%s failed (status %i)' % (args[0], p.returncode))
-
     return so
 
 class mount (object):
@@ -92,17 +89,9 @@ class ftp_mount (object):
     def __exit__ (self, exc_type, exc_val, exc_tb):
         return False
     def df (self):
-        p = subprocess.Popen ('lftp', stdin = subprocess.PIPE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-        so, se = p.communicate (input = 'connect %s && user %s %s && du --bytes --summarize .' % (self.sr.hostname, self.sr.username, os.environ['FTP_PASSWORD']))
-        if p.returncode != 0:
-            print 'Unable to calculate used backup space:'
-        for line in se.split ('\n'):
-            if line != '': print '>', line
-        if p.returncode != 0:
-            raise Exception ('lftp failure')
-
         size = config.getint ('target', 'quota')
-        used = int (so.split ()[0])
+        output = call ('lftp', stdin='connect %s && user %s %s && du --bytes --summarize .' % (self.sr.hostname, self.sr.username, os.environ['FTP_PASSWORD']), stdout=subprocess.PIPE)
+        used = int (output.split ()[0])
         return used, size
 
 class snapshot (object):
