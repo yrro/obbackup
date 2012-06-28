@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import with_statement
 
 import ConfigParser
-import ctypes
 import os
 import re
 import socket
@@ -13,18 +12,6 @@ import sys
 import time
 import traceback
 import urlparse
-
-libc = ctypes.cdll.LoadLibrary ('libc.so.6')
-libc.getfsspec.argtypes = [ctypes.c_char_p]
-class fstab (ctypes.Structure):
-    _fields_ = [('fs_spec', ctypes.c_char_p),
-                ('fs_file', ctypes.c_char_p),
-                ('fs_vfstype', ctypes.c_char_p),
-                ('fs_mntops', ctypes.c_char_p),
-                ('fs_type', ctypes.c_char_p),
-                ('fs_freq', ctypes.c_int),
-                ('fs_passno', ctypes.c_int)]
-libc.getfsspec.restype = ctypes.POINTER (fstab)
 
 def call (*args, **kwargs):
     print '>', ' '.join (args)
@@ -42,17 +29,10 @@ def call (*args, **kwargs):
     return so
 
 class mount (object):
-    def __init__ (self, target, device, options = {}):
+    def __init__ (self, target, device = None, options = {}):
         self.device = device
         self.options = options
         self.target = target
-
-        if self.target is None:
-            f = libc.getfsspec (self.device)
-            try:
-                self.target = f.contents.fs_file
-            except ValueError:
-                raise Exception ('getfsspec("{0}") failed'.format (self.device))
 
     def check_mounted (self, desired):
         if os.path.ismount (self.target) != desired:
@@ -179,8 +159,6 @@ if __name__ == '__main__':
 
     if config.has_option ('target', 'mount'):
         mounter = mount (config.get ('target', 'mount'), None)
-    elif config.has_option ('target', 'device'):
-        mounter = mount (None, device=config.get ('target', 'device'))
     else:
         mounter = ftp_mount (config.get ('target', 'uri'))
 
