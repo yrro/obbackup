@@ -42,12 +42,12 @@ def call (*args, **kwargs):
     return so
 
 class mount (object):
-    def __init__ (self, device, target = None, options = {}):
+    def __init__ (self, target, device, options = {}):
         self.device = device
         self.options = options
         self.target = target
 
-        if not self.target:
+        if self.target is None:
             f = libc.getfsspec (self.device)
             try:
                 self.target = f.contents.fs_file
@@ -66,9 +66,9 @@ class mount (object):
         if len (self.options) > 0:
             args.append ('-o')
             args.append (','.join ([k + ('=' + v if v else '') for k, v in self.options.items()]))
-        args.append (self.device)
-        if self.target:
-            args.append (self.target)
+        if self.device:
+            args.append (self.device)
+        args.append (self.target)
 
         call (*args)
 
@@ -145,7 +145,7 @@ def backup_dir (name, dir):
 
 def backup_lv (name, lv):
     with snapshot (lv) as s:
-        with mount (s.device, config.get ('lvm', 'snapshot_mnt'), {'ro': None}):
+        with mount (config.get ('lvm', 'snapshot_mnt'), s.device, {'ro': None}):
             backup_dir (name, config.get ('lvm', 'snapshot_mnt'))
 
 backup_functions = {
@@ -178,7 +178,9 @@ if __name__ == '__main__':
         sys.exit (1)
 
     if config.has_option ('target', 'mount'):
-        mounter = mount (config.get ('target', 'mount'))
+        mounter = mount (config.get ('target', 'mount'), None)
+    elif config.has_option ('target', 'device'):
+        mounter = mount (None, device=config.get ('target', 'device'))
     else:
         mounter = ftp_mount (config.get ('target', 'uri'))
 
